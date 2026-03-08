@@ -1,4 +1,3 @@
-package Sender;
 
 import java.io.FileInputStream;
 import java.net.DatagramPacket;
