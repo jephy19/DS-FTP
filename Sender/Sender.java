@@ -58,7 +58,7 @@ public class Sender {
 
 		List<byte[]> chunks = new ArrayList<>();
 
-		byte[] buffer = new byte[124];
+		byte[] buffer = new byte[DSPacket.MAX_PAYLOAD_SIZE];
 
 		int bytesRead;
 
@@ -92,6 +92,8 @@ public class Sender {
 
 		for (byte[] data : chunks) {
 
+			int timeoutCount = 0;
+
 			boolean acked = false;
 
 			while (!acked) {
@@ -107,6 +109,7 @@ public class Sender {
 					int ack = waitForACK(socket, seq);
 
 					if (ack == seq) {
+						
 
 						acked = true;
 						seq = (seq + 1) % 128;
@@ -114,7 +117,14 @@ public class Sender {
 
 				} catch (SocketTimeoutException e) {
 
-					System.out.println("Timeout for seq=" + seq + " retransmitting...");
+					timeoutCount++;
+
+                    System.out.println("Timeout for seq=" + packet.getSeqNum());
+
+                    if (timeoutCount >= 3) {
+                        System.out.println("Unable to transfer file");
+                        return;
+					}
 				}
 			}
 		}
@@ -125,6 +135,7 @@ public class Sender {
 
 		int base = 1;
 		int nextSeq = 1;
+		int timeoutCount = 0;
 
 		Map<Integer, DSPacket> window = new HashMap<>();
 
@@ -145,26 +156,39 @@ public class Sender {
 
 			try {
 
-				int ack = waitForACK(socket, -1);
+				int ack = waitForACK(socket, nextSeq);
+				System.out.println("Received Ack=" + ack);
 
-				System.out.println("Received ACK=" + ack);
+                if (ack >= base && ack < nextSeq) {
 
-				if (ack >= base) {
+                    base = ack + 1;
 
-					base = ack + 1;
-				}
+                    timeoutCount = 0;
+
+                    //System.out.println("Window slides to base=" + base);
+                }
 
 			} catch (SocketTimeoutException e) {
+				//Changed from origin
+				timeoutCount++;
 
 				System.out.println("Timeout. Resending window...");
 
+				if (timeoutCount >= 3) {
+
+					System.out.println("Unable to transfer file");
+
+					return;
+				}
+
 				for (int i = base; i < nextSeq; i++) {
-
+					
 					DSPacket p = window.get(i);
+					if (p != null) {
+						sendPacket(socket, addr, port, p);
+						System.out.println("Resent seq=" + p.getSeqNum());
 
-					sendPacket(socket, addr, port, p);
-
-					System.out.println("Resent seq=" + p.getSeqNum());
+					}
 				}
 			}
 		}
